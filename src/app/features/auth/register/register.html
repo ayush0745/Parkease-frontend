@@ -1,0 +1,83 @@
+<div class="register-container">
+  <div class="neo-container register-card">
+    <div class="register-header">
+      <h2>Create Account</h2>
+      <p>Join ParkEase today</p>
+    </div>
+
+    <form (ngSubmit)="onSubmit()" #registerForm="ngForm" class="register-form">
+      <div class="form-group">
+        <label for="fullName">Full Name *</label>
+        <input 
+          type="text" 
+          id="fullName" 
+          name="fullName" 
+          class="neo-input" 
+          placeholder="Enter your full name"
+          [(ngModel)]="userData.fullName" 
+          required>
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email *</label>
+        <input 
+          type="email" 
+          id="email" 
+          name="email" 
+          class="neo-input" 
+          placeholder="Enter your email"
+          [(ngModel)]="userData.email" 
+          required>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password *</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          class="neo-input" 
+          placeholder="Min 6 characters"
+          [(ngModel)]="userData.password" 
+          required>
+      </div>
+
+      <div class="form-group">
+        <label for="phone">Phone (Optional)</label>
+        <input 
+          type="text" 
+          id="phone" 
+          name="phone" 
+          class="neo-input" 
+          placeholder="Enter your phone number"
+          [(ngModel)]="userData.phone">
+      </div>
+
+      <div class="form-group">
+        <label for="vehiclePlate">Vehicle Plate (Optional)</label>
+        <input 
+          type="text" 
+          id="vehiclePlate" 
+          name="vehiclePlate" 
+          class="neo-input" 
+          placeholder="Enter your vehicle plate"
+          [(ngModel)]="userData.vehiclePlate">
+      </div>
+
+      <div *ngIf="errorMessage" class="error-message">
+        {{ errorMessage }}
+      </div>
+
+      <button 
+        type="submit" 
+        class="neo-button primary submit-btn" 
+        [disabled]="isLoading">
+        {{ isLoading ? 'Registering...' : 'Register' }}
+      </button>
+    </form>
+    
+    <div class="register-footer">
+      <p>Already have an account? <a routerLink="/login">Login here</a></p>
+    </div>
+  </div>
+</div>

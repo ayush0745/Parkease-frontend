@@ -1,0 +1,16 @@
+<nav class="neo-nav">
+  <div class="nav-brand">
+    <a routerLink="/" class="brand-logo">ParkEase</a>
+  </div>
+  
+  <div class="nav-links" *ngIf="authService.isLoggedIn()">
+    <a routerLink="/dashboard" routerLinkActive="active" class="neo-button">Dashboard</a>
+    <a routerLink="/lots" routerLinkActive="active" class="neo-button">Parking Lots</a>
+    <a routerLink="/bookings" routerLinkActive="active" class="neo-button">Bookings</a>
+    <button (click)="authService.logout()" class="neo-button">Logout</button>
+  </div>
+  
+  <div class="nav-links" *ngIf="!authService.isLoggedIn()">
+    <a routerLink="/login" routerLinkActive="active" class="neo-button primary">Login</a>
+  </div>
+</nav>
