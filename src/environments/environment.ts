@@ -4,5 +4,6 @@ export const environment = {
   googleClientId: '356169181305-fu3c7b7mk6utie1fmoc5hkr3qarqii59.apps.googleusercontent.com',
   // Add these for better functionality
   stripePublicKey: 'pk_test_YOUR_STRIPE_PUBLIC_KEY',
+  razorpayKey: 'rzp_test_SmXLLXzt0TRU4N',
   mapboxApiKey: 'YOUR_MAPBOX_API_KEY'
 };

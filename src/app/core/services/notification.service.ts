@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, BehaviorSubject } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 @Injectable({
@@ -8,6 +8,12 @@ import { environment } from '../../../environments/environment';
 })
 export class NotificationService {
   private apiUrl = `${environment.apiUrl}/notifications`;
+  private unreadCountSubject = new BehaviorSubject<number>(0);
+  public unreadCount$ = this.unreadCountSubject.asObservable();
+
+  updateUnreadCount(count: number) {
+    this.unreadCountSubject.next(count);
+  }
 
   constructor(private http: HttpClient) {}
 
@@ -51,12 +57,8 @@ export class NotificationService {
     return this.http.patch(`${this.apiUrl}/${notificationId}/read`, {});
   }
 
-  getMyNotifications(): Observable<any> {
-    return this.http.get(`${this.apiUrl}/user/me`);
-  }
-
-  markAllAsRead(): Observable<any> {
-    return this.http.patch(`${this.apiUrl}/user/me/read-all`, {});
+  markAllAsRead(recipientId: number): Observable<any> {
+    return this.http.patch(`${this.apiUrl}/recipient/${recipientId}/read`, {});
   }
 
   deleteNotification(notificationId: number): Observable<any> {

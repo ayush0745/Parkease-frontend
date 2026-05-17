@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PaymentService } from '../../core/services/payment.service';
@@ -15,7 +15,7 @@ import { ToastService } from '../../shared/services/toast.service';
         <div class="flex space-x-3">
           <select [(ngModel)]="filterStatus" (change)="filterPayments()" class="input-field">
             <option value="">All Payments</option>
-            <option value="COMPLETED">Completed</option>
+            <option value="PAID">Paid</option>
             <option value="PENDING">Pending</option>
             <option value="FAILED">Failed</option>
             <option value="REFUNDED">Refunded</option>
@@ -81,9 +81,8 @@ import { ToastService } from '../../shared/services/toast.service';
                 </td>
                 <td class="px-6 py-4">
                   <div>
-                    <p class="font-medium text-gray-900 dark:text-white">{{ payment.lotName }}</p>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
-                      Spot {{ payment.spotNumber }} • {{ payment.duration }}h
+                    <p class="font-medium text-gray-900 dark:text-white">
+                      {{ payment.lotName }} {{ payment.spotNumber }}
                     </p>
                     <p class="text-xs text-gray-500">{{ payment.vehiclePlate }}</p>
                   </div>
@@ -109,12 +108,12 @@ import { ToastService } from '../../shared/services/toast.service';
                 </td>
                 <td class="px-6 py-4 text-right">
                   <div class="flex items-center justify-end space-x-2">
-                    <button (click)="downloadReceipt(payment.id)" 
+                    <button (click)="downloadReceipt(payment.paymentId || payment.id)" 
                             class="text-blue-600 hover:text-blue-800 text-sm font-medium">
                       📄 Receipt
                     </button>
-                    <button *ngIf="payment.status === 'COMPLETED' && canRefund(payment)" 
-                            (click)="requestRefund(payment.id)"
+                    <button *ngIf="payment.status === 'PAID' && canRefund(payment)" 
+                            (click)="requestRefund(payment.paymentId || payment.id)"
                             class="text-orange-600 hover:text-orange-800 text-sm font-medium">
                       🔄 Refund
                     </button>
@@ -154,6 +153,7 @@ import { ToastService } from '../../shared/services/toast.service';
 export class PaymentHistoryComponent implements OnInit {
   private paymentService = inject(PaymentService);
   private toastService = inject(ToastService);
+  private cdr = inject(ChangeDetectorRef);
 
   payments: any[] = [];
   filteredPayments: any[] = [];
@@ -162,12 +162,12 @@ export class PaymentHistoryComponent implements OnInit {
 
   get totalSpent(): number {
     return this.payments
-      .filter(p => p.status === 'COMPLETED')
+      .filter(p => p.status === 'PAID')
       .reduce((sum, p) => sum + p.amount, 0);
   }
 
   get completedPayments(): number {
-    return this.payments.filter(p => p.status === 'COMPLETED').length;
+    return this.payments.filter(p => p.status === 'PAID').length;
   }
 
   get pendingPayments(): number {
@@ -180,7 +180,7 @@ export class PaymentHistoryComponent implements OnInit {
     return this.payments
       .filter(p => {
         const paymentDate = new Date(p.createdAt);
-        return p.status === 'COMPLETED' && 
+        return p.status === 'PAID' && 
                paymentDate.getMonth() === thisMonth && 
                paymentDate.getFullYear() === thisYear;
       })
@@ -193,64 +193,31 @@ export class PaymentHistoryComponent implements OnInit {
 
   loadPayments() {
     this.paymentService.getPaymentHistory().subscribe({
-      next: (payments) => {
-        this.payments = payments || [];
+      next: (response) => {
+        const rawPayments = Array.isArray(response) ? response : (response?.content || []);
+        
+        this.payments = rawPayments.map((p: any) => ({
+          ...p,
+          createdAt: p.createdAt || p.paidAt, // Fallback to paidAt
+          lotName: p.lotName || `Lot #${p.lotId}`,
+          spotNumber: p.spotNumber || `#${p.spotId || 'N/A'}`,
+          duration: p.duration || 1 // Fallback duration
+        }));
+
         this.filterPayments();
         this.calculateMonthlySummary();
+        this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('Failed to load payments:', err);
-        // Mock data for demo
-        this.payments = this.getMockPayments();
+        this.toastService.error('Failed to load payment history.');
+        this.payments = [];
         this.filterPayments();
-        this.calculateMonthlySummary();
       }
     });
   }
 
-  getMockPayments(): any[] {
-    return [
-      {
-        id: 1,
-        transactionId: 'TXN-001234',
-        amount: 15.50,
-        fees: 0.50,
-        status: 'COMPLETED',
-        paymentMethod: 'Credit Card ****1234',
-        lotName: 'Downtown Plaza',
-        spotNumber: 'A-15',
-        duration: 2,
-        vehiclePlate: 'ABC-1234',
-        createdAt: new Date()
-      },
-      {
-        id: 2,
-        transactionId: 'TXN-001235',
-        amount: 12.00,
-        fees: 0,
-        status: 'COMPLETED',
-        paymentMethod: 'PayPal',
-        lotName: 'Shopping Center',
-        spotNumber: 'B-22',
-        duration: 3,
-        vehiclePlate: 'XYZ-5678',
-        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000)
-      },
-      {
-        id: 3,
-        transactionId: 'TXN-001236',
-        amount: 8.00,
-        fees: 0,
-        status: 'PENDING',
-        paymentMethod: 'Credit Card ****5678',
-        lotName: 'Airport Parking',
-        spotNumber: 'C-10',
-        duration: 1,
-        vehiclePlate: 'ABC-1234',
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
-      }
-    ];
-  }
+
 
   filterPayments() {
     if (this.filterStatus) {
@@ -258,13 +225,14 @@ export class PaymentHistoryComponent implements OnInit {
     } else {
       this.filteredPayments = [...this.payments];
     }
+    this.cdr.detectChanges();
   }
 
   calculateMonthlySummary() {
     const monthlyData: { [key: string]: { amount: number; transactions: number } } = {};
     
     this.payments
-      .filter(p => p.status === 'COMPLETED')
+      .filter(p => p.status === 'PAID')
       .forEach(payment => {
         const date = new Date(payment.createdAt);
         const monthKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
@@ -280,6 +248,7 @@ export class PaymentHistoryComponent implements OnInit {
     this.monthlySummary = Object.entries(monthlyData)
       .map(([month, data]) => ({ month, ...data }))
       .slice(-3); // Last 3 months
+    this.cdr.detectChanges();
   }
 
   downloadReceipt(paymentId: number) {
@@ -296,7 +265,7 @@ export class PaymentHistoryComponent implements OnInit {
       },
       error: (err) => {
         console.error('Failed to download receipt:', err);
-        this.toastService.success('Receipt download started! (Demo mode)');
+        this.toastService.error('Failed to download receipt. Please try again.');
       }
     });
   }
@@ -305,7 +274,7 @@ export class PaymentHistoryComponent implements OnInit {
     if (confirm('Are you sure you want to request a refund for this payment?')) {
       this.paymentService.requestRefund(paymentId).subscribe({
         next: () => {
-          const payment = this.payments.find(p => p.id === paymentId);
+          const payment = this.payments.find(p => (p.paymentId || p.id) === paymentId);
           if (payment) {
             payment.status = 'REFUNDED';
             this.filterPayments();
@@ -314,13 +283,7 @@ export class PaymentHistoryComponent implements OnInit {
         },
         error: (err) => {
           console.error('Failed to request refund:', err);
-          // Mock success for demo
-          const payment = this.payments.find(p => p.id === paymentId);
-          if (payment) {
-            payment.status = 'REFUNDED';
-            this.filterPayments();
-          }
-          this.toastService.success('Refund request submitted! (Demo mode)');
+          this.toastService.error('Failed to request refund. The transaction might be ineligible.');
         }
       });
     }
@@ -350,6 +313,6 @@ export class PaymentHistoryComponent implements OnInit {
   }
 
   trackByPaymentId(index: number, payment: any): number {
-    return payment.id;
+    return payment.paymentId || payment.id;
   }
 }

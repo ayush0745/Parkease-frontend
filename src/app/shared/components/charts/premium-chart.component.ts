@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ThemeService } from '../../../core/services/theme.service';
 
@@ -46,7 +46,7 @@ export interface ChartData {
     </div>
   `
 })
-export class PremiumChartComponent implements OnInit, OnDestroy {
+export class PremiumChartComponent implements OnInit, OnChanges, OnDestroy {
   @Input() type: 'line' | 'area' | 'bar' | 'pie' | 'donut' | 'radialBar' | 'heatmap' = 'line';
   @Input() data: ChartData = { series: [] };
   @Input() height: string = '350px';
@@ -62,6 +62,12 @@ export class PremiumChartComponent implements OnInit, OnDestroy {
     this.loadApexCharts().then(() => {
       this.initChart();
     });
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['data'] && !changes['data'].firstChange && this.chart) {
+      this.updateChart(changes['data'].currentValue);
+    }
   }
 
   ngOnDestroy() {

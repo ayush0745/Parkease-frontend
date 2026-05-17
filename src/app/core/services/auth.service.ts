@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { BehaviorSubject, Observable, tap, forkJoin, merge, scan, map as rxMap } from 'rxjs';
 import { User, LoginRequest, RegisterRequest, AuthResponse } from '../models/auth.model';
 import { environment } from '../../../environments/environment';
 import { Router } from '@angular/router';
@@ -48,11 +48,12 @@ export class AuthService {
     this.currentUserSubject.next(userData as any);
   }
 
-  fetchProfile() {
+  fetchProfile(): Observable<any> {
     const token = this.getToken();
-    if (!token) return;
+    if (!token) return new Observable();
 
-    this.http.get<User>(`${this.apiUrl}/profile`).subscribe({
+    const request = this.http.get<any>(`${this.apiUrl}/profile`);
+    request.subscribe({
       next: (profile) => {
         const user = this.currentUserValue;
         if (user) {
@@ -62,18 +63,37 @@ export class AuthService {
         }
       }
     });
+    return request;
+  }
+
+  updateProfile(data: { fullName: string, email: string, phone?: string }): Observable<any> {
+    return this.http.put(`${this.apiUrl}/profile`, data).pipe(
+      tap((profile: any) => {
+        const user = this.currentUserValue;
+        if (user) {
+          const updatedUser = { ...user, fullName: profile.fullName, email: profile.email };
+          localStorage.setItem('parkease_user', JSON.stringify(updatedUser));
+          this.currentUserSubject.next(updatedUser);
+        }
+      })
+    );
+  }
+
+  changePassword(data: any): Observable<any> {
+    return this.http.put(`${this.apiUrl}/password`, data, { responseType: 'text' });
+  }
+
+  forgotPassword(email: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/forgot-password`, { email }, { responseType: 'text' });
+  }
+
+  resetPassword(data: { token: string, newPassword: string }): Observable<any> {
+    return this.http.post(`${this.apiUrl}/reset-password`, data, { responseType: 'text' });
   }
 
   googleLogin(credential: string): Observable<AuthResponse> {
-    // Decode the Google JWT to extract user info
-    const payload = JSON.parse(atob(credential.split('.')[1]));
-    const params = new URLSearchParams({
-      subject: payload.sub,
-      email: payload.email,
-      fullName: payload.name || payload.email
-    });
     return this.http.post<AuthResponse>(
-      `${this.apiUrl}/oauth/google?${params.toString()}`, {}
+      `${this.apiUrl}/oauth/google`, { credential }
     ).pipe(
       tap(response => {
         localStorage.setItem('parkease_token', response.accessToken);
@@ -81,13 +101,13 @@ export class AuthService {
           id: response.userId,
           email: response.email,
           role: response.role,
-          fullName: payload.name
+          fullName: response.fullName || response.email
         }));
         this.currentUserSubject.next({
           id: response.userId,
           email: response.email,
           role: response.role as any,
-          fullName: payload.name
+          fullName: response.fullName || response.email
         });
       })
     );
@@ -128,8 +148,15 @@ export class AuthService {
     if (role) {
       return this.http.get<any[]>(`${this.apiUrl}/admin/users?role=${role}`);
     } else {
-      // Get all users by fetching each role separately and combining
-      return this.http.get<any[]>(`${this.apiUrl}/admin/users/drivers`);
+      // Fetch each role and combine them incrementally for better perceived performance
+      const roles = ['DRIVER', 'MANAGER', 'ADMIN'];
+      const requests = roles.map(r => 
+        this.http.get<any[]>(`${this.apiUrl}/admin/users?role=${r}`)
+      );
+      
+      return merge(...requests).pipe(
+        scan((acc, curr) => [...acc, ...curr], [] as any[])
+      );
     }
   }
 

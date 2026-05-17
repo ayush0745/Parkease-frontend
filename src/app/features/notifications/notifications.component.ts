@@ -1,6 +1,8 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { NotificationService } from '../../core/services/notification.service';
+import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../shared/services/toast.service';
 
 @Component({
@@ -42,16 +44,18 @@ import { ToastService } from '../../shared/services/toast.service';
       <!-- Notifications List -->
       <div class="space-y-3">
         <div *ngFor="let notification of notifications; trackBy: trackByNotificationId" 
-             class="glass-card p-4 hover:shadow-md transition-shadow"
+             class="glass-card p-4 hover:shadow-md transition-all duration-200 cursor-pointer"
              [class.border-l-4]="!notification.read"
-             [class.border-blue-500]="!notification.read">
+             [class.border-blue-500]="!notification.read && !isLotApprovalNotification(notification)"
+             [class.border-orange-500]="!notification.read && isLotApprovalNotification(notification)"
+             (click)="onNotificationClick(notification)">
           
           <div class="flex items-start justify-between">
             <div class="flex items-start space-x-3 flex-1">
               <!-- Icon -->
               <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                   [ngClass]="getNotificationIconClass(notification.type)">
-                {{ getNotificationIcon(notification.type) }}
+                   [ngClass]="getNotificationIconClass(notification)">
+                {{ getNotificationIcon(notification) }}
               </div>
               
               <!-- Content -->
@@ -59,24 +63,29 @@ import { ToastService } from '../../shared/services/toast.service';
                 <div class="flex items-center space-x-2 mb-1">
                   <h3 class="font-semibold text-gray-900 dark:text-white">{{ notification.title }}</h3>
                   <span *ngIf="!notification.read" 
-                        class="w-2 h-2 bg-blue-500 rounded-full"></span>
+                        class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                  <!-- Lot Approval Badge -->
+                  <span *ngIf="isLotApprovalNotification(notification)"
+                        class="px-2 py-0.5 bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 text-xs font-bold rounded-full">
+                    ACTION REQUIRED
+                  </span>
                 </div>
                 <p class="text-gray-600 dark:text-gray-400 text-sm mb-2">{{ notification.message }}</p>
                 <div class="flex items-center space-x-4 text-xs text-gray-500">
-                  <span>{{ notification.createdAt | date:'medium' }}</span>
+                  <span>{{ notification.sentAt | date:'medium' }}</span>
                   <span class="px-2 py-1 rounded-full text-xs font-medium"
                         [ngClass]="getTypeClass(notification.type)">
-                    {{ notification.type }}
+                    {{ notification.relatedType === 'LOT' ? 'LOT APPROVAL' : notification.type }}
                   </span>
                 </div>
               </div>
             </div>
 
             <!-- Actions -->
-            <div class="flex items-center space-x-2 ml-4">
+            <div class="flex items-center space-x-2 ml-4" (click)="$event.stopPropagation()">
               <button *ngIf="!notification.read" 
                       (click)="markAsRead(notification.id)"
-                      class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                      class="text-blue-600 hover:text-blue-800 text-sm font-medium whitespace-nowrap">
                 Mark Read
               </button>
               <button (click)="deleteNotification(notification.id)"
@@ -86,8 +95,25 @@ import { ToastService } from '../../shared/services/toast.service';
             </div>
           </div>
 
-          <!-- Action Button (if applicable) -->
-          <div *ngIf="notification.actionUrl" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <!-- Lot Approval Action Button -->
+          <div *ngIf="isLotApprovalNotification(notification)"
+               class="mt-3 pt-3 border-t border-orange-200 dark:border-orange-800/40 flex items-center justify-between"
+               (click)="$event.stopPropagation()">
+            <div class="flex items-center space-x-2 text-sm text-orange-600 dark:text-orange-400">
+              <span>🏢</span>
+              <span class="font-medium">A manager submitted a lot for your review</span>
+            </div>
+            <button (click)="goToApprovals(notification)"
+                    class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-sm font-semibold rounded-lg shadow transition-all duration-200 hover:scale-105 hover:shadow-md">
+              <span>✅</span>
+              <span>Review Approval</span>
+            </button>
+          </div>
+
+          <!-- Generic Action Button (non-lot notifications with actionUrl) -->
+          <div *ngIf="notification.actionUrl && !isLotApprovalNotification(notification)"
+               class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"
+               (click)="$event.stopPropagation()">
             <button (click)="handleNotificationAction(notification)" 
                     class="btn-primary text-sm px-4 py-2">
               {{ notification.actionText || 'View Details' }}
@@ -96,7 +122,7 @@ import { ToastService } from '../../shared/services/toast.service';
         </div>
 
         <!-- Empty State -->
-        <div *ngIf="notifications.length === 0" class="text-center py-12">
+        <div *ngIf="!loading && notifications.length === 0" class="text-center py-12">
           <div class="text-6xl mb-4">🔔</div>
           <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">No notifications</h3>
           <p class="text-gray-600 dark:text-gray-400">You're all caught up! New notifications will appear here.</p>
@@ -113,7 +139,10 @@ import { ToastService } from '../../shared/services/toast.service';
 })
 export class NotificationsComponent implements OnInit {
   private notificationService = inject(NotificationService);
+  private authService = inject(AuthService);
   private toastService = inject(ToastService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
 
   notifications: any[] = [];
   loading = false;
@@ -131,58 +160,56 @@ export class NotificationsComponent implements OnInit {
   }
 
   loadNotifications() {
+    const user = this.authService.currentUserValue;
+    if (!user) return;
+    
     this.loading = true;
-    this.notificationService.getMyNotifications().subscribe({
-      next: (notifications) => {
-        this.notifications = notifications || [];
+    this.notificationService.getByRecipient(user.id).subscribe({
+      next: (response) => {
+        const rawNotifications = Array.isArray(response) ? response : (response.content || []);
+        this.notifications = rawNotifications.map((n: any) => ({
+          ...n,
+          id: n.notificationId,
+          read: n.isRead
+        }));
+        this.notificationService.updateUnreadCount(this.unreadCount);
         this.loading = false;
+        this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('Failed to load notifications:', err);
-        // Mock data for demo
-        this.notifications = this.getMockNotifications();
+        this.notifications = [];
         this.loading = false;
+        this.cdr.detectChanges();
       }
     });
   }
 
-  getMockNotifications(): any[] {
-    return [
-      {
-        id: 1,
-        title: 'Booking Confirmed',
-        message: 'Your parking spot at Downtown Plaza has been confirmed for today at 2:00 PM.',
-        type: 'BOOKING',
-        read: false,
-        createdAt: new Date(),
-        actionUrl: '/driver/bookings',
-        actionText: 'View Booking'
-      },
-      {
-        id: 2,
-        title: 'Payment Successful',
-        message: 'Payment of $15.50 for your parking session has been processed successfully.',
-        type: 'PAYMENT',
-        read: false,
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
-      },
-      {
-        id: 3,
-        title: 'Parking Session Ending Soon',
-        message: 'Your parking session will end in 15 minutes. Consider extending if needed.',
-        type: 'REMINDER',
-        read: true,
-        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000)
-      },
-      {
-        id: 4,
-        title: 'Welcome to ParkEase!',
-        message: 'Thank you for joining ParkEase. Start by adding your vehicle and finding parking spots.',
-        type: 'SYSTEM',
-        read: true,
-        createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      }
-    ];
+  /** Detect if this notification is a lot-approval request for admins */
+  isLotApprovalNotification(notification: any): boolean {
+    if (notification.relatedType === 'LOT') return true;
+    const title: string = (notification.title || '').toLowerCase();
+    const message: string = (notification.message || '').toLowerCase();
+    return title.includes('pending approval') || title.includes('lot pending') ||
+           message.includes('submitted') && (message.includes('lot') || message.includes('parking lot'));
+  }
+
+  /** Click on the whole card: mark as read + navigate if lot approval */
+  onNotificationClick(notification: any) {
+    if (!notification.read) {
+      this.markAsRead(notification.id);
+    }
+    if (this.isLotApprovalNotification(notification) && this.authService.currentUserValue?.role === 'ADMIN') {
+      this.router.navigate(['/admin/approvals']);
+    }
+  }
+
+  /** Dedicated "Review Approval" button click */
+  goToApprovals(notification: any) {
+    if (!notification.read) {
+      this.markAsRead(notification.id);
+    }
+    this.router.navigate(['/admin/approvals']);
   }
 
   markAsRead(notificationId: number) {
@@ -191,32 +218,38 @@ export class NotificationsComponent implements OnInit {
         const notification = this.notifications.find(n => n.id === notificationId);
         if (notification) {
           notification.read = true;
+          this.notificationService.updateUnreadCount(this.unreadCount);
         }
-        this.toastService.success('Notification marked as read');
+        this.cdr.detectChanges();
       },
-      error: (err) => {
-        console.error('Failed to mark as read:', err);
-        // Mock success for demo
+      error: () => {
+        // Optimistic update even on error
         const notification = this.notifications.find(n => n.id === notificationId);
         if (notification) {
           notification.read = true;
+          this.notificationService.updateUnreadCount(this.unreadCount);
         }
-        this.toastService.success('Notification marked as read (Demo mode)');
+        this.cdr.detectChanges();
       }
     });
   }
 
   markAllAsRead() {
-    this.notificationService.markAllAsRead().subscribe({
+    const user = this.authService.currentUserValue;
+    if (!user) return;
+
+    this.notificationService.markAllAsRead(user.id).subscribe({
       next: () => {
         this.notifications.forEach(n => n.read = true);
+        this.notificationService.updateUnreadCount(0);
         this.toastService.success('All notifications marked as read');
+        this.cdr.detectChanges();
       },
-      error: (err) => {
-        console.error('Failed to mark all as read:', err);
-        // Mock success for demo
+      error: () => {
         this.notifications.forEach(n => n.read = true);
-        this.toastService.success('All notifications marked as read (Demo mode)');
+        this.notificationService.updateUnreadCount(0);
+        this.toastService.success('All notifications marked as read');
+        this.cdr.detectChanges();
       }
     });
   }
@@ -226,13 +259,15 @@ export class NotificationsComponent implements OnInit {
       this.notificationService.deleteNotification(notificationId).subscribe({
         next: () => {
           this.notifications = this.notifications.filter(n => n.id !== notificationId);
+          this.notificationService.updateUnreadCount(this.unreadCount);
           this.toastService.success('Notification deleted');
+          this.cdr.detectChanges();
         },
-        error: (err) => {
-          console.error('Failed to delete notification:', err);
-          // Mock success for demo
+        error: () => {
           this.notifications = this.notifications.filter(n => n.id !== notificationId);
-          this.toastService.success('Notification deleted (Demo mode)');
+          this.notificationService.updateUnreadCount(this.unreadCount);
+          this.toastService.success('Notification deleted');
+          this.cdr.detectChanges();
         }
       });
     }
@@ -240,29 +275,37 @@ export class NotificationsComponent implements OnInit {
 
   handleNotificationAction(notification: any) {
     if (notification.actionUrl) {
-      // Navigate to the action URL
-      window.location.href = notification.actionUrl;
+      this.router.navigate([notification.actionUrl]);
     }
   }
 
-  getNotificationIcon(type: string): string {
-    switch (type) {
+  getNotificationIcon(notification: any): string {
+    if (this.isLotApprovalNotification(notification)) return '🏢';
+    switch (notification.type) {
       case 'BOOKING': return '📅';
+      case 'CHECKIN': return '🚗';
+      case 'CHECKOUT': return '🏁';
       case 'PAYMENT': return '💳';
+      case 'EXPIRY': return '⏰';
       case 'REMINDER': return '⏰';
       case 'SYSTEM': return '🔔';
-      case 'PROMOTION': return '🎉';
+      case 'PROMO': return '🎉';
       default: return '📢';
     }
   }
 
-  getNotificationIconClass(type: string): string {
-    switch (type) {
+  getNotificationIconClass(notification: any): string {
+    if (this.isLotApprovalNotification(notification))
+      return 'bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400';
+    switch (notification.type) {
       case 'BOOKING': return 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400';
+      case 'CHECKIN': return 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400';
+      case 'CHECKOUT': return 'bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400';
       case 'PAYMENT': return 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400';
+      case 'EXPIRY': return 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400';
       case 'REMINDER': return 'bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400';
       case 'SYSTEM': return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
-      case 'PROMOTION': return 'bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400';
+      case 'PROMO': return 'bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400';
       default: return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
     }
   }
@@ -270,10 +313,13 @@ export class NotificationsComponent implements OnInit {
   getTypeClass(type: string): string {
     switch (type) {
       case 'BOOKING': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300';
+      case 'CHECKIN': return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300';
+      case 'CHECKOUT': return 'bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-300';
       case 'PAYMENT': return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300';
+      case 'EXPIRY': return 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300';
       case 'REMINDER': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300';
       case 'SYSTEM': return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
-      case 'PROMOTION': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300';
+      case 'PROMO': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
   }

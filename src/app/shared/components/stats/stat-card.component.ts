@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -80,7 +80,7 @@ import { CommonModule } from '@angular/common';
     </div>
   `
 })
-export class StatCardComponent implements OnInit, OnDestroy {
+export class StatCardComponent implements OnInit, OnChanges, OnDestroy {
   @Input() label: string = '';
   @Input() value: number | string = 0;
   @Input() prefix: string = '';
@@ -101,20 +101,35 @@ export class StatCardComponent implements OnInit, OnDestroy {
   Math = Math;
 
   ngOnInit() {
-    if (this.animate && typeof this.value === 'number') {
-      this.animateValue(0, this.value, 1500);
-    } else {
-      this.animatedValue = this.value;
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['value']) {
+      const prev = changes['value'].previousValue;
+      const current = changes['value'].currentValue;
+      const isFirst = changes['value'].firstChange;
+      
+      if (this.animate && typeof current === 'number') {
+        const start = isFirst ? 0 : (typeof prev === 'number' ? prev : 0);
+        this.animateValue(start, current, 400);
+      } else {
+        this.animatedValue = current;
+      }
     }
 
-    if (this.progress !== undefined) {
-      this.animateProgress(0, this.progress, 1000);
+    if (changes['progress'] && this.progress !== undefined) {
+      const isFirst = changes['progress'].firstChange;
+      const prev = isFirst ? 0 : (changes['progress'].previousValue || 0);
+      this.animateProgress(prev, this.progress, 400);
     }
   }
 
   ngOnDestroy() {
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame);
+    }
+    if (this.progressAnimationFrame) {
+      cancelAnimationFrame(this.progressAnimationFrame);
     }
   }
 
@@ -189,7 +204,12 @@ export class StatCardComponent implements OnInit, OnDestroy {
     return icons[this.icon] || icons['chart'];
   }
 
+  private progressAnimationFrame?: number;
+
   private animateValue(start: number, end: number, duration: number) {
+    if (this.animationFrame) {
+      cancelAnimationFrame(this.animationFrame);
+    }
     const startTime = performance.now();
     
     const animate = (currentTime: number) => {
@@ -205,6 +225,7 @@ export class StatCardComponent implements OnInit, OnDestroy {
         this.animationFrame = requestAnimationFrame(animate);
       } else {
         this.animatedValue = end;
+        this.animationFrame = undefined;
       }
     };
     
@@ -212,6 +233,9 @@ export class StatCardComponent implements OnInit, OnDestroy {
   }
 
   private animateProgress(start: number, end: number, duration: number) {
+    if (this.progressAnimationFrame) {
+      cancelAnimationFrame(this.progressAnimationFrame);
+    }
     const startTime = performance.now();
     
     const animate = (currentTime: number) => {
@@ -224,12 +248,13 @@ export class StatCardComponent implements OnInit, OnDestroy {
       this.animatedProgress = start + (end - start) * easeOut;
       
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        this.progressAnimationFrame = requestAnimationFrame(animate);
       } else {
         this.animatedProgress = end;
+        this.progressAnimationFrame = undefined;
       }
     };
     
-    requestAnimationFrame(animate);
+    this.progressAnimationFrame = requestAnimationFrame(animate);
   }
 }

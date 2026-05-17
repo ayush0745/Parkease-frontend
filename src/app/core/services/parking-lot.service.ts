@@ -81,12 +81,28 @@ export class ParkingLotService {
     return this.http.post<Spot>(this.spotApiUrl, spot);
   }
 
-  addSpotsBulk(spots: Spot[]): Observable<Spot[]> {
-    return this.http.post<Spot[]>(`${this.spotApiUrl}/bulk`, spots);
+  addSpotsBulk(request: any): Observable<any> {
+    return this.http.post<any>(`${this.spotApiUrl}/bulk`, request);
   }
 
   updateSpot(id: string, spot: Spot): Observable<Spot> {
     return this.http.put<Spot>(`${this.spotApiUrl}/${id}`, spot);
+  }
+
+  reserveSpot(id: string): Observable<Spot> {
+    return this.http.patch<Spot>(`${this.spotApiUrl}/${id}/reserve`, {});
+  }
+
+  releaseSpot(id: string): Observable<Spot> {
+    return this.http.patch<Spot>(`${this.spotApiUrl}/${id}/release`, {});
+  }
+
+  getAvailableCount(lotId: string): Observable<number> {
+    return this.http.get<number>(`${this.spotApiUrl}/lot/${lotId}/count/available`);
+  }
+
+  getAvailableSpots(lotId: string): Observable<Spot[]> {
+    return this.http.get<Spot[]>(`${this.spotApiUrl}/lot/${lotId}/available`);
   }
 
   getMyLots(): Observable<any> {

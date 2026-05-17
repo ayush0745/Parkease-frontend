@@ -59,6 +59,10 @@ export class AnalyticsService {
     return this.http.get(`${this.apiUrl}/platform-summary`);
   }
 
+  getAdminDashboard(): Observable<any> {
+    return this.http.get(`${environment.apiUrl}/admin/dashboard`);
+  }
+
   getDailyReport(lotId: number, date?: string): Observable<any> {
     const params = date ? `?date=${date}` : '';
     return this.http.get(`${this.apiUrl}/lots/${lotId}/daily-report${params}`);

@@ -12,27 +12,26 @@ export class BookingService {
   constructor(private http: HttpClient) {}
 
   createBooking(request: any): Observable<any> {
-    // Validate request before sending
     console.log('Booking service received:', request);
     
     if (!request) {
       return throwError(() => new Error('Booking request is null or undefined'));
     }
     
+    if (!request.lotId) {
+      return throwError(() => new Error('Missing lotId in booking request'));
+    }
+
     if (!request.spotId) {
       return throwError(() => new Error('Missing spotId in booking request'));
     }
     
-    if (!request.vehicleId) {
-      return throwError(() => new Error('Missing vehicleId in booking request'));
+    if (!request.vehiclePlate) {
+      return throwError(() => new Error('Missing vehiclePlate in booking request'));
     }
     
     if (!request.startTime) {
       return throwError(() => new Error('Missing startTime in booking request'));
-    }
-    
-    if (!request.endTime) {
-      return throwError(() => new Error('Missing endTime in booking request'));
     }
     
     return this.http.post(this.apiUrl, request);
@@ -56,6 +55,10 @@ export class BookingService {
 
   getBookingHistory(): Observable<any> {
     return this.http.get(`${this.apiUrl}/history`);
+  }
+
+  getAvailableSpotsForTime(lotId: number, startTime: string, endTime: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/lot/${lotId}/available?startTime=${startTime}&endTime=${endTime}`);
   }
 
   checkIn(bookingId: number): Observable<any> {

@@ -19,26 +19,26 @@ export class DashboardDispatcherComponent implements OnInit {
   private router = inject(Router);
 
   ngOnInit() {
-    const user = this.authService.currentUserValue;
-    
-    if (!user) {
-      this.router.navigate(['/login']);
-      return;
-    }
-
-    // Redirect based on user role
-    switch (user.role) {
-      case 'DRIVER':
-        this.router.navigate(['/driver/dashboard']);
-        break;
-      case 'MANAGER':
-        this.router.navigate(['/manager/dashboard']);
-        break;
-      case 'ADMIN':
-        this.router.navigate(['/admin/dashboard']);
-        break;
-      default:
+    this.authService.currentUser$.subscribe(user => {
+      if (user) {
+        // Redirect based on user role
+        switch (user.role) {
+          case 'DRIVER':
+            this.router.navigate(['/driver/dashboard']);
+            break;
+          case 'MANAGER':
+            this.router.navigate(['/manager/dashboard']);
+            break;
+          case 'ADMIN':
+            this.router.navigate(['/admin/dashboard']);
+            break;
+          default:
+            this.router.navigate(['/login']);
+        }
+      } else if (!this.authService.getToken()) {
+        // Only redirect to login if we definitely have no token
         this.router.navigate(['/login']);
-    }
+      }
+    });
   }
 }
